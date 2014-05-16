@@ -36,9 +36,11 @@
 #define QPNP_VIB_VTG_SET_MASK		0x1F
 #define QPNP_VIB_LOGIC_SHIFT		4
 
+#ifdef VIBRATOR_PANTECH_PATCH
 static int debug_vib=0;
 
 #define dbg(fmt, args...)   if(debug_vib)printk("[VIB] " fmt, ##args)
+#endif
 
 struct qpnp_vib {
 	struct spmi_device *spmi;
