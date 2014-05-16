@@ -397,7 +397,11 @@ static int dispatcher_context_sendcmds(struct adreno_device *adreno_dev,
 	 */
 
 	if (count)
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG	
 		wake_up_all(&drawctxt->wq);
+#else
+		wake_up_interruptible_all(&drawctxt->wq);
+#endif
 
 	/*
 	 * Return positive if the context submitted commands or if we figured

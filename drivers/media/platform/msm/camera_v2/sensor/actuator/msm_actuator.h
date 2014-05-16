@@ -19,6 +19,22 @@
 #include <media/msmb_camera.h>
 #include "msm_camera_i2c.h"
 
+#ifdef CONFIG_PANTECH_CAMERA
+
+#if defined(CONFIG_PANTECH_CAMERA_EF56_SS) || defined(CONFIG_PANTECH_CAMERA_EF59_SS) || defined(CONFIG_PANTECH_CAMERA_EF60_SS) || (defined(CONFIG_PANTECH_CAMERA_EF63_SS) && (CONFIG_BOARD_VER < CONFIG_WS10))
+#ifndef CONFIG_PANTECH_CAMERA_ACT_WV560
+#define CONFIG_PANTECH_CAMERA_ACT_WV560
+#endif
+#endif
+
+#if (defined(CONFIG_PANTECH_CAMERA_EF63_SS) && (CONFIG_BOARD_VER > CONFIG_PT10))
+#ifndef CONFIG_PANTECH_CAMERA_RUMBA_SA
+#define CONFIG_PANTECH_CAMERA_RUMBA_SA
+#endif
+#endif
+
+#endif
+
 #define DEFINE_MSM_MUTEX(mutexname) \
 	static struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
 

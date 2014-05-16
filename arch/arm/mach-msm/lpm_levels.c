@@ -212,6 +212,7 @@ static int lpm_set_l2_mode(struct lpm_system_state *system_state,
 
 	switch (sleep_mode) {
 	case MSM_SPM_L2_MODE_POWER_COLLAPSE:
+		/*pr_info("Configuring for L2 power collapse\n");*/
 		msm_pm_set_l2_flush_flag(MSM_SCM_L2_OFF);
 		break;
 	case MSM_SPM_L2_MODE_GDHS:
@@ -341,7 +342,9 @@ static void lpm_system_prepare(struct lpm_system_state *system_state,
 	const struct cpumask *nextcpu;
 
 	spin_lock(&system_state->sync_lock);
-	if (num_powered_cores != system_state->num_cores_in_sync) {
+	//Goni_20140211_qcom_patch   if (num_powered_cores != system_state->num_cores_in_sync) {
+	if (index < 0 ||
+     		num_powered_cores != system_state->num_cores_in_sync) {
 		spin_unlock(&system_state->sync_lock);
 		return;
 	}
@@ -418,7 +421,8 @@ static void lpm_system_unprepare(struct lpm_system_state *system_state,
 			system_lvl->num_cpu_votes--;
 	}
 
-	if (!first_core_up)
+	//Goni_20140211_qcom_patch  if (!first_core_up)
+    if (!first_core_up || index < 0)		
 		goto unlock_and_return;
 
 	if (default_l2_mode != system_state->system_level[index].l2_mode)
@@ -429,6 +433,7 @@ static void lpm_system_unprepare(struct lpm_system_state *system_state,
 		msm_mpm_exit_sleep(from_idle);
 	}
 unlock_and_return:
+	system_state->last_entered_cluster_index = -1;  //Goni_20140211_qcom_patch
 	spin_unlock(&system_state->sync_lock);
 }
 
@@ -726,8 +731,9 @@ static void lpm_enter_low_power(struct lpm_system_state *system_state,
 
 	idx = lpm_system_select(system_state, cpu_index, from_idle);
 
-	if (idx >= 0)
-		lpm_system_prepare(system_state, idx, from_idle);
+	////Goni_20140211_qcom_patch  if (idx >= 0)
+	////Goni_20140211_qcom_patch 	lpm_system_prepare(system_state, idx, from_idle);
+	lpm_system_prepare(system_state, idx, from_idle);  //Goni_20140211_qcom_patch
 
 	msm_cpu_pm_enter_sleep(cpu_level->mode, from_idle);
 
@@ -1013,6 +1019,7 @@ static int lpm_system_probe(struct platform_device *pdev)
 	}
 	sys_state.system_level = level;
 	sys_state.num_system_levels = num_levels;
+	sys_state.last_entered_cluster_index = -1;  //Goni_20140211_qcom_patch
 	return ret;
 fail:
 	kfree(level);

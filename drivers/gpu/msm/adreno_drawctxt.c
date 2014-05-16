@@ -138,7 +138,11 @@ static void wait_callback(struct kgsl_device *device, void *priv, u32 id,
 		u32 timestamp, u32 type)
 {
 	struct adreno_context *drawctxt = priv;
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG
 	wake_up_all(&drawctxt->waiting);
+#else
+	wake_up_interruptible_all(&drawctxt->waiting);
+#endif
 }
 
 #define adreno_wait_event_interruptible_timeout(wq, condition, timeout, io)   \
@@ -266,13 +270,28 @@ static void global_wait_callback(struct kgsl_device *device, void *priv, u32 id,
 {
 	struct adreno_context *drawctxt = priv;
 
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG
 	wake_up_all(&drawctxt->waiting);
+#else
+	wake_up_interruptible_all(&drawctxt->waiting);
+#endif
 	kgsl_context_put(&drawctxt->base);
 }
 
 static int _check_global_timestamp(struct kgsl_device *device,
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG
+		struct adreno_context *drawctxt, unsigned int timestamp)
+#else
 		unsigned int timestamp)
+#endif		
 {
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG 
+	/* Stop waiting if the context is invalidated */
+	if (drawctxt->state == ADRENO_CONTEXT_STATE_INVALID)
+		return 1;
+
+	return kgsl_check_timestamp(device, NULL, timestamp);
+#else
 	int ret;
 
 	mutex_lock(&device->mutex);
@@ -280,6 +299,7 @@ static int _check_global_timestamp(struct kgsl_device *device,
 	mutex_unlock(&device->mutex);
 
 	return ret;
+#endif	
 }
 
 int adreno_drawctxt_wait_global(struct adreno_device *adreno_dev,
@@ -288,7 +308,11 @@ int adreno_drawctxt_wait_global(struct adreno_device *adreno_dev,
 {
 	struct kgsl_device *device = &adreno_dev->dev;
 	struct adreno_context *drawctxt = ADRENO_CONTEXT(context);
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG
+	int ret = 0;
+#else 
 	int ret;
+#endif
 
 	/* Needs to hold the device mutex */
 	BUG_ON(!mutex_is_locked(&device->mutex));
@@ -297,6 +321,13 @@ int adreno_drawctxt_wait_global(struct adreno_device *adreno_dev,
 		ret = -EINVAL;
 		goto done;
 	}
+
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG 
+	if (drawctxt->state == ADRENO_CONTEXT_STATE_INVALID) {
+		kgsl_context_put(context);
+		goto done;
+	}
+#endif
 
 	trace_adreno_drawctxt_wait_start(KGSL_MEMSTORE_GLOBAL, timestamp);
 
@@ -310,8 +341,13 @@ int adreno_drawctxt_wait_global(struct adreno_device *adreno_dev,
 	mutex_unlock(&device->mutex);
 
 	if (timeout) {
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG		
 		ret = (int) wait_event_timeout(drawctxt->waiting,
+			_check_global_timestamp(device, drawctxt, timestamp),
+#else
+		ret = (int) wait_event_interruptible_timeout(drawctxt->waiting,	
 			_check_global_timestamp(device, timestamp),
+#endif			
 			msecs_to_jiffies(timeout));
 
 		if (ret == 0)
@@ -319,8 +355,13 @@ int adreno_drawctxt_wait_global(struct adreno_device *adreno_dev,
 		else if (ret > 0)
 			ret = 0;
 	} else {
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG
 		wait_event(drawctxt->waiting,
+			_check_global_timestamp(device, drawctxt, timestamp));
+#else
+		ret = (int) wait_event_interruptible(drawctxt->waiting,		
 			_check_global_timestamp(device, timestamp));
+#endif
 	}
 
 	mutex_lock(&device->mutex);
@@ -386,8 +427,13 @@ void adreno_drawctxt_invalidate(struct kgsl_device *device,
 	mutex_unlock(&drawctxt->mutex);
 
 	/* Give the bad news to everybody waiting around */
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG
 	wake_up_all(&drawctxt->waiting);
 	wake_up_all(&drawctxt->wq);
+#else
+	wake_up_interruptible_all(&drawctxt->waiting);
+	wake_up_interruptible_all(&drawctxt->wq);
+#endif	
 }
 
 /**
@@ -543,13 +589,9 @@ int adreno_drawctxt_detach(struct kgsl_context *context)
 	ret = adreno_drawctxt_wait_global(adreno_dev, context,
 		drawctxt->internal_timestamp, 10 * 1000);
 
-	/*
-	 * If the wait for global fails then nothing after this point is likely
-	 * to work very well - BUG_ON() so we can take advantage of the debug
-	 * tools to figure out what the h - e - double hockey sticks happened
-	 */
-
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG
 	BUG_ON(ret);
+#endif
 
 	kgsl_sharedmem_writel(device, &device->memstore,
 			KGSL_MEMSTORE_OFFSET(context->id, soptimestamp),
@@ -565,8 +607,13 @@ int adreno_drawctxt_detach(struct kgsl_context *context)
 		drawctxt->ops->detach(drawctxt);
 
 	/* wake threads waiting to submit commands from this context */
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG
 	wake_up_all(&drawctxt->waiting);
 	wake_up_all(&drawctxt->wq);
+#else
+	wake_up_interruptible_all(&drawctxt->waiting);
+	wake_up_interruptible_all(&drawctxt->wq);
+#endif
 
 	return ret;
 }

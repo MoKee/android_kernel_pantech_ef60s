@@ -142,6 +142,7 @@ struct kgsl_iommu_register_list {
  * @clk_enabled: If set indicates that iommu clocks of this iommu context
  * are on, else the clocks are off
  * fault: Flag when set indicates that this iommu device has caused a page
+ * @clk_enable_count: The ref count of clock enable calls
  * fault
  */
 struct kgsl_iommu_device {
@@ -152,6 +153,9 @@ struct kgsl_iommu_device {
 	bool clk_enabled;
 	struct kgsl_device *kgsldev;
 	int fault;
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG_SECOND
+	atomic_t clk_enable_count;
+#endif	
 };
 
 /*
@@ -201,8 +205,10 @@ struct kgsl_iommu_unit {
 struct kgsl_iommu {
 	struct kgsl_iommu_unit iommu_units[KGSL_IOMMU_MAX_UNITS];
 	unsigned int unit_count;
+#ifndef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG_SECOND	
 	unsigned int iommu_last_cmd_ts;
 	bool clk_event_queued;
+#endif	
 	struct kgsl_device *device;
 	unsigned int ctx_offset;
 	struct kgsl_iommu_register_list *iommu_reg_list;
@@ -221,5 +227,21 @@ struct kgsl_iommu_pt {
 	struct iommu_domain *domain;
 	struct kgsl_iommu *iommu;
 };
+
+#ifdef CONFIG_F_QUALCOMM_GPU_PATCH_FOR_BUS_HANG_SECOND
+/*
+ * struct kgsl_iommu_disable_clk_param - Parameter struct for disble clk event
+ * @mmu: The mmu pointer
+ * @rb_level: the rb level in which the timestamp of the event belongs to
+ * @ctx_id: The IOMMU context whose clock is to be turned off
+ * @ts: Timestamp on which clock is to be disabled
+ */
+struct kgsl_iommu_disable_clk_param {
+	struct kgsl_mmu *mmu;
+	int rb_level;
+	int ctx_id;
+	unsigned int ts;
+};
+#endif
 
 #endif

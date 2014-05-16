@@ -41,6 +41,19 @@
 #include "wcd9xxx-resmgr.h"
 #include "wcd9xxx-common.h"
 
+/* LS3@SND : Write headset button ADC level for test menu #8378522# Earphone Key Test */
+#ifdef CONFIG_PANTECH_SND
+#include <linux/proc_fs.h>
+struct proc_dir_entry *wcd9320_headset_button_dir;
+static s32 mv_s_backup = 0;
+#endif /* CONFIG_PANTECH_SND */
+
+/* 2013-12-16 LS3@SND Workaround code for 3-pole event removal when 4-pole headset connect slowly */
+#ifdef CONFIG_PANTECH_SND
+#define HEADPHONE_REPORT_FORCE_SKIP_MAX_NUM 5
+static int find_plug_type_attempt_cnt = 0;
+#endif /* CONFIG_PANTECH_SND */
+
 #define WCD9XXX_JACK_MASK (SND_JACK_HEADSET | SND_JACK_OC_HPHL | \
 			   SND_JACK_OC_HPHR | SND_JACK_LINEOUT | \
 			   SND_JACK_UNSUPPORTED)
@@ -174,6 +187,15 @@ enum wcd9xxx_current_v_idx {
 	WCD9XXX_CURRENT_V_B1_HU,
 	WCD9XXX_CURRENT_V_BR_H,
 };
+
+#ifdef CONFIG_PANTECH_SND_BOOTUP_HEADSET_INFO
+static int headset_jack_status = 0;
+
+int wcd9xxx_headsetJackStatusGet(void)
+{
+	return headset_jack_status;
+}
+#endif
 
 static int wcd9xxx_detect_impedance(struct wcd9xxx_mbhc *mbhc, uint32_t *zl,
 				    uint32_t *zr);
@@ -825,6 +847,9 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 		mbhc->zl = mbhc->zr = 0;
 		pr_debug("%s: Reporting removal %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
+#ifdef CONFIG_PANTECH_SND_BOOTUP_HEADSET_INFO
+		headset_jack_status = 0;
+#endif
 		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack, mbhc->hph_status,
 				    WCD9XXX_JACK_MASK);
 		wcd9xxx_set_and_turnoff_hph_padac(mbhc);
@@ -851,6 +876,9 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 
 			pr_debug("%s: Reporting removal (%x)\n",
 				 __func__, mbhc->hph_status);
+#ifdef CONFIG_PANTECH_SND_BOOTUP_HEADSET_INFO
+			headset_jack_status = 0;
+#endif
 			mbhc->zl = mbhc->zr = 0;
 			wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
 					    0, WCD9XXX_JACK_MASK);
@@ -882,6 +910,9 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 
 		pr_debug("%s: Reporting insertion %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
+#ifdef CONFIG_PANTECH_SND_BOOTUP_HEADSET_INFO
+		headset_jack_status = jack_type;
+#endif
 		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
 				    mbhc->hph_status, WCD9XXX_JACK_MASK);
 		wcd9xxx_clr_and_turnon_hph_padac(mbhc);
@@ -1473,6 +1504,14 @@ wcd9xxx_cs_find_plug_type(struct wcd9xxx_mbhc *mbhc,
 	    (mbhc->mbhc_cfg->micbias_enable_flags &
 	    (1 << MBHC_MICBIAS_ENABLE_REGULAR_HEADSET)))
 		mbhc->micbias_enable = true;
+
+/* 2013-12-16 LS3@SND Workaround code for 3-pole event removal when 4-pole headset connect slowly */
+#ifdef CONFIG_PANTECH_SND
+	if (type == PLUG_TYPE_HEADPHONE && find_plug_type_attempt_cnt < HEADPHONE_REPORT_FORCE_SKIP_MAX_NUM) {
+		pr_debug("[SND] %s: Set force PLUG_TYPE_HEADPHONE to PLUG_TYPE_INVALID, Count : %d\n", __func__, find_plug_type_attempt_cnt);
+		type = PLUG_TYPE_INVALID;
+	}
+#endif /* CONFIG_PANTECH_SND */
 
 exit:
 	pr_debug("%s: Plug type %d detected\n", __func__, type);
@@ -2759,6 +2798,12 @@ static void wcd9xxx_correct_swch_plug(struct work_struct *work)
 
 	timeout = jiffies + msecs_to_jiffies(HS_DETECT_PLUG_TIME_MS);
 	while (!time_after(jiffies, timeout)) {
+
+/* 2013-12-16 LS3@SND Workaround code for 3-pole event removal when 4-pole headset connect slowly */
+#ifdef CONFIG_PANTECH_SND
+		++find_plug_type_attempt_cnt;
+#endif /* CONFIG_PANTECH_SND */
+
 		++retry;
 		rmb();
 		if (mbhc->hs_detect_work_stop) {
@@ -2786,7 +2831,15 @@ static void wcd9xxx_correct_swch_plug(struct work_struct *work)
 		pr_debug("%s: attempt(%d) current_plug(%d) new_plug(%d)\n",
 			 __func__, retry, mbhc->current_plug, plug_type);
 
+/*
+ * 2014-02-07 LS3@SND - QCOM workaround for car 4-pole HANDSFREE cable recognition error issue.
+ * CASE#01293496 : [MSM8974] Specific AUX cable is not recognized on current source detection system.
+ */
+#ifdef CONFIG_PANTECH_SND_QCOM_PATCH
+		highhph_cnt = (plug_type == PLUG_TYPE_HIGH_HPH || plug_type == PLUG_TYPE_INVALID) ?
+#else
 		highhph_cnt = (plug_type == PLUG_TYPE_HIGH_HPH) ?
+#endif /* CONFIG_PANTECH_SND_QCOM_PATCH */
 					(highhph_cnt + 1) :
 					0;
 		highhph = wcd9xxx_mbhc_enable_mb_decision(highhph_cnt);
@@ -2852,6 +2905,11 @@ static void wcd9xxx_correct_swch_plug(struct work_struct *work)
 			break;
 		}
 	}
+
+/* 2013-12-16 LS3@SND Workaround code for 3-pole event removal when 4-pole headset connect slowly */
+#ifdef CONFIG_PANTECH_SND
+	find_plug_type_attempt_cnt = 0;
+#endif /* CONFIG_PANTECH_SND */
 
 	highhph = false;
 	if (wrk_complete && plug_type == PLUG_TYPE_HIGH_HPH) {
@@ -3156,6 +3214,32 @@ void wcd9xxx_update_z(struct wcd9xxx_mbhc *mbhc)
 	wcd9xxx_calibrate_hs_polling(mbhc);
 }
 
+/* LS3@SND : Write headset button ADC level for test menu #8378522# Earphone Key Test */
+#ifdef CONFIG_PANTECH_SND
+static int proc_debug_wcd9320_get_hsADC(char *page, char **start, off_t offset,
+					int count, int *eof, void *data)
+{
+	*eof = 1;
+	return sprintf(page, "%d\n", mv_s_backup);
+}
+
+static void create_hs_button_testmenu_entries(void)
+{
+	struct proc_dir_entry *ent;
+
+	wcd9320_headset_button_dir = proc_mkdir("taiko_codec", NULL);
+	if (wcd9320_headset_button_dir == NULL) {
+		pr_err("[SND] Unable to create /proc/taiko_codec directory\n");
+	}
+
+	ent = create_proc_entry("hs_button_id", S_IRUGO, wcd9320_headset_button_dir);
+	if (ent == NULL)
+		pr_err("[SND] Unable to create /proc/hs_button_id entry\n");
+	
+	ent->read_proc = proc_debug_wcd9320_get_hsADC;
+}
+#endif /* CONFIG_PANTECH_SND */
+
 /*
  * wcd9xxx_update_rel_threshold : update mbhc release upper bound threshold
  *				  to ceilmv + buffer
@@ -3334,6 +3418,12 @@ irqreturn_t wcd9xxx_dce_handler(int irq, void *data)
 		pr_debug("%s: Meas %d - DCE 0x%x,%d,%d button %d\n",
 			 __func__, meas, dce[meas] & 0xFFFF, mv[meas],
 			 mv_s[meas], btnmeas[meas]);
+
+/* LS3@SND : Write headset button ADC level for test menu #8378522# Earphone Key Test */
+#ifdef CONFIG_PANTECH_SND
+		mv_s_backup = mv_s[meas];
+#endif /* CONFIG_PANTECH_SND */
+
 		/*
 		 * if large enough measurements are collected,
 		 * start to check if last all n_btn_con measurements were
@@ -3376,7 +3466,13 @@ irqreturn_t wcd9xxx_dce_handler(int irq, void *data)
 		mbhc->buttons_pressed |= mask;
 		wcd9xxx_lock_sleep(core_res);
 		if (schedule_delayed_work(&mbhc->mbhc_btn_dwork,
-					  msecs_to_jiffies(400)) == 0) {
+/* LS3@SND Fixed for Headset Volume up/down Key delay */
+#ifdef CONFIG_PANTECH_SND
+					  msecs_to_jiffies(10)) == 0) // 10ms
+#else /* QCOM_original */
+					  msecs_to_jiffies(400)) == 0) // 400ms
+#endif
+		{
 			WARN(1, "Button pressed twice without release event\n");
 			wcd9xxx_unlock_sleep(core_res);
 		}
@@ -4622,6 +4718,27 @@ int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
 			return ret;
 		}
 
+/* 2013-12-10 LS3@SND BUTTON 1, 2 mapping to Volume UP/DOWN key as BUTTON 0 */
+#ifdef CONFIG_PANTECH_SND
+		ret = snd_jack_set_key(mbhc->button_jack.jack,
+				       SND_JACK_BTN_1,
+				       KEY_VOLUMEUP);
+		if (ret) {
+			pr_err("[SND] %s: Failed to set code for btn-1\n",
+				__func__);
+			return ret;
+		}
+
+		ret = snd_jack_set_key(mbhc->button_jack.jack,
+				       SND_JACK_BTN_2,
+				       KEY_VOLUMEDOWN);
+		if (ret) {
+			pr_err("[SND] %s: Failed to set code for btn-2\n",
+				__func__);
+			return ret;
+		}
+#endif /* CONFIG_PANTECH_SND */
+
 		INIT_DELAYED_WORK(&mbhc->mbhc_firmware_dwork,
 				  wcd9xxx_mbhc_fw_read);
 		INIT_DELAYED_WORK(&mbhc->mbhc_btn_dwork, wcd9xxx_btn_lpress_fn);
@@ -4675,6 +4792,11 @@ int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
 		       mbhc->intr_ids->dce_est_complete);
 		goto err_potential_irq;
 	}
+
+/* LS3@SND : Write headset button ADC level for test menu #8378522# Earphone Key Test */
+#ifdef CONFIG_PANTECH_SND
+	create_hs_button_testmenu_entries();
+#endif /* CONFIG_PANTECH_SND */
 
 	ret = wcd9xxx_request_irq(core_res, mbhc->intr_ids->button_release,
 				  wcd9xxx_release_handler,

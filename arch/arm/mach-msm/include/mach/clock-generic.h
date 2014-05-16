@@ -16,6 +16,8 @@
 
 #include <mach/clk-provider.h>
 
+#define QCT_CLOCK_READ_DEBUG_PATCH	// p15274
+
 /* ==================== Mux clock ==================== */
 
 struct clk_src {
@@ -60,6 +62,15 @@ struct mux_clk {
 	void		*priv;
 
 	struct clk	c;
+	
+#ifdef QCT_CLOCK_READ_DEBUG_PATCH
+	uint32_t mode_val;
+	uint32_t l_val;
+	uint32_t user_ctl_val;
+	uint32_t config_ctl_val;
+	uint32_t pll_status_val;
+	u32	reg_val;
+#endif	
 };
 
 static inline struct mux_clk *to_mux_clk(struct clk *c)

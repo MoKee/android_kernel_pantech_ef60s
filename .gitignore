@@ -24,7 +24,10 @@
 *.order
 modules.builtin
 *.elf
+<<<<<<< HEAD
 *.bin
+=======
+>>>>>>> kk_org
 *.gz
 *.bz2
 *.lzma
@@ -32,6 +35,8 @@ modules.builtin
 *.lzo
 *.patch
 *.gcno
+
+build_msm8974_kernel.sh
 
 #
 # Top-level generic files

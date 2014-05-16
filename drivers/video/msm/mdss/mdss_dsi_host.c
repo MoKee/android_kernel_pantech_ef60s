@@ -33,6 +33,9 @@ static struct mdss_dsi_ctrl_pdata *left_ctrl_pdata;
 
 static struct mdss_dsi_ctrl_pdata *ctrl_list[DSI_CTRL_MAX];
 
+#if defined(CONFIG_F_SKYDISP_EF63_SS)   //ejkim77_debug dump  
+unsigned char *dsi_ctrl_base;
+#endif
 
 struct mdss_hw mdss_dsi0_hw = {
 	.hw_ndx = MDSS_HW_DSI0,
@@ -245,6 +248,10 @@ void mdss_dsi_host_init(struct mipi_panel_info *pinfo,
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
+#if defined(CONFIG_F_SKYDISP_EF63_SS)   //ejkim77_debug dump
+	if(!dsi_ctrl_base)  
+	dsi_ctrl_base = ctrl_pdata->ctrl_base; 
+#endif
 	pinfo->rgb_swap = DSI_RGB_SWAP_RGB;
 
 	ctrl_pdata->panel_mode = pinfo->mode;
@@ -1000,7 +1007,9 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	int domain = MDSS_IOMMU_DOMAIN_UNSECURE;
 	char *bp;
 	unsigned long size, addr;
-
+#ifdef CONFIG_F_QUALCOMM_DETACH_IOMMU_BUGFIX
+	int iommu_attached = 0;
+#endif
 	bp = tp->data;
 
 	len = ALIGN(tp->len, 4);
@@ -1015,6 +1024,9 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 			pr_err("unable to map dma memory to iommu(%d)\n", ret);
 			return -ENOMEM;
 		}
+#ifdef CONFIG_F_QUALCOMM_DETACH_IOMMU_BUGFIX
+		iommu_attached = 1;
+#endif
 	} else {
 		addr = tp->dmap;
 	}
@@ -1047,8 +1059,11 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 		ret = -ETIMEDOUT;
 	else
 		ret = tp->len;
-
+#ifndef CONFIG_F_QUALCOMM_DETACH_IOMMU_BUGFIX
 	if (is_mdss_iommu_attached())
+#else
+	if (iommu_attached == 1 && is_mdss_iommu_attached())
+#endif
 		msm_iommu_unmap_contig_buffer(addr,
 			mdss_get_iommu_domain(domain), 0, size);
 
@@ -1354,6 +1369,9 @@ void mdss_dsi_timeout_status(struct mdss_dsi_ctrl_pdata *ctrl)
 
 	if (status & 0x0111) {
 		MIPI_OUTP(base + 0x00c0, status);
+#ifdef F_WA_WATCHDOG_DURING_BOOTUP	
+		if(ctrl->octa_blck_set)
+#endif		
 		pr_err("%s: status=%x\n", __func__, status);
 	}
 }
@@ -1421,6 +1439,27 @@ void mdss_dsi_clk_status(struct mdss_dsi_ctrl_pdata *ctrl)
 	}
 }
 
+#if defined(CONFIG_F_SKYDISP_EF63_SS)  //ejkim77_debug dump
+void dumpreg(void) 
+{ 
+u32 tmp0x0,tmp0x4,tmp0x8,tmp0xc; 
+int i; 
+pr_err("%s: =============DSI Reg DUMP==============\n", __func__); 
+if(dsi_ctrl_base == NULL) { 
+pr_err("%s: dsi_ctrl_base is NULL, Skip dumpreg()!!\n", __func__); 
+return; 
+} 
+for(i=0; i< 91; i++){ 
+tmp0x0 = MIPI_INP(dsi_ctrl_base+(i*16)+0x0); 
+tmp0x4 = MIPI_INP(dsi_ctrl_base+(i*16)+0x4); 
+tmp0x8 = MIPI_INP(dsi_ctrl_base+(i*16)+0x8); 
+tmp0xc = MIPI_INP(dsi_ctrl_base+(i*16)+0xc); 
+
+pr_err("[%04x] : %08x %08x %08x %08x\n",i*16, tmp0x0,tmp0x4,tmp0x8,tmp0xc); 
+} 
+pr_err("%s: ============= END ==============\n", __func__); 
+} 
+#endif
 void mdss_dsi_error(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 
@@ -1436,6 +1475,15 @@ void mdss_dsi_error(struct mdss_dsi_ctrl_pdata *ctrl)
 	mdss_dsi_dln0_phy_err(ctrl);	/* mask0, 0x3e00000 */
 
 	dsi_send_events(ctrl, DSI_EV_MDP_BUSY_RELEASE);
+#if defined(CONFIG_F_SKYDISP_EF63_SS)   //ejkim77_debug dump
+#ifdef F_WA_WATCHDOG_DURING_BOOTUP
+	if(ctrl->octa_blck_set && ctrl->lcd_connect_check)
+#endif	
+	{
+       dumpreg();
+	BUG_ON(1);
+	}
+#endif	
 }
 
 irqreturn_t mdss_dsi_isr(int irq, void *ptr)
@@ -1463,6 +1511,10 @@ irqreturn_t mdss_dsi_isr(int irq, void *ptr)
 	pr_debug("%s: isr=%x", __func__, isr);
 
 	if (isr & DSI_INTR_ERROR) {
+#ifdef F_WA_WATCHDOG_DURING_BOOTUP
+		if(ctrl->octa_blck_set)
+#endif	
+		
 		pr_err("%s: isr=%x %x", __func__, isr, (int)DSI_INTR_ERROR);
 		mdss_dsi_error(ctrl);
 	}

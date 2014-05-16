@@ -696,7 +696,9 @@ int mdss_mdp_rotator_play(struct msm_fb_data_type *mfd,
 			    struct msmfb_overlay_data *req)
 {
 	struct mdss_mdp_rotator_session *rot;
+#ifdef CONFIG_F_QUALCOMM_DETACH_IOMMU_BUGFIX
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
+#endif
 	int ret;
 	u32 flgs;
 
@@ -715,10 +717,10 @@ int mdss_mdp_rotator_play(struct msm_fb_data_type *mfd,
 		pr_err("rotator busy wait error\n");
 		goto dst_buf_fail;
 	}
-
+#ifdef CONFIG_F_QUALCOMM_DETACH_IOMMU_BUGFIX	
 	if (!mfd->panel_info->cont_splash_enabled)
 		mdss_iommu_attach(mdp5_data->mdata);
-
+#endif	
 	mdss_mdp_overlay_free_buf(&rot->src_buf);
 	ret = mdss_mdp_overlay_get_buf(mfd, &rot->src_buf, &req->data, 1, flgs);
 	if (ret) {

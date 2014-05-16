@@ -11,7 +11,9 @@ extern struct proto rawv6_prot;
 extern struct proto udpv6_prot;
 extern struct proto udplitev6_prot;
 extern struct proto tcpv6_prot;
-
+#ifdef CONFIG_SKY_DS_CTS_ICMPV6_ECHO_REQUEST
+extern struct proto pingv6_prot;
+#endif 
 struct flowi6;
 
 /* extension headers */
@@ -21,6 +23,10 @@ extern int				ipv6_frag_init(void);
 extern void				ipv6_frag_exit(void);
 
 /* transport protocols */
+#ifdef CONFIG_SKY_DS_CTS_ICMPV6_ECHO_REQUEST
+extern int				pingv6_init(void);
+extern void				pingv6_exit(void);
+#endif 
 extern int				rawv6_init(void);
 extern void				rawv6_exit(void);
 extern int				udpv6_init(void);

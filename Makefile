@@ -380,6 +380,18 @@ KBUILD_AFLAGS_MODULE  := -DMODULE
 KBUILD_CFLAGS_MODULE  := -DMODULE
 KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
 
+
+######################################################################
+# PANTECH_KERNEL_FLAGS
+######################################################################
+KBUILD_CFLAGS += -DPROJECT_NAME=\"ef60s\"
+KBUILD_CFLAGS += -DPROJECT_NAME_UPPER=\"EF60S\"
+KBUILD_CFLAGS += -DMODEL_NAME=\"IM-A900S\"
+KBUILD_CFLAGS += -DPANTECH_BUILD_VER=\"S0000000\"
+KBUILD_CFLAGS += -DPANTECH_BOARD_VER=tp20
+KBUILD_CFLAGS += -DMSM8974_V30
+KBUILD_CFLAGS += $(PANTECH_KERNEL_FLAGS)
+
 # Read KERNELRELEASE from include/config/kernel.release (if it exists)
 KERNELRELEASE = $(shell cat include/config/kernel.release 2> /dev/null)
 KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(SUBLEVEL)))$(EXTRAVERSION)

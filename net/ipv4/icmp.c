@@ -788,7 +788,11 @@ static void icmp_redirect(struct sk_buff *skb)
 	if (iph->protocol == IPPROTO_ICMP &&
 	    iph->ihl >= 5 &&
 	    pskb_may_pull(skb, (iph->ihl<<2)+8)) {
+#ifdef CONFIG_SKY_DS_CTS_ICMPV6_ECHO_REQUEST
+		ping_v4_err(skb, icmp_hdr(skb)->un.gateway);
+#else 
 		ping_err(skb, icmp_hdr(skb)->un.gateway);
+#endif 
 	}
 
 out:
